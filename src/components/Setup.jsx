@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { remote } from '../lib/remote.js';
 import { parseRoster, uid, makeCode } from '../lib/util.js';
 import { outbox, writeCache } from '../lib/sync.js';
 
@@ -12,6 +13,22 @@ export default function Setup() {
   const [ourText, setOurText] = useState(last.ourText || '');
   const [oppText, setOppText] = useState('');
   const [starters, setStarters] = useState(new Set(last.starters || []));
+
+  const [rosterId, setRosterId] = useState(null);
+  const touched = useRef(false);
+
+  // Prefer the roster saved in your account (same on every device) unless you've already started typing.
+  useEffect(() => {
+    let dead = false;
+    remote.getRoster().then((r) => {
+      if (dead || !r || touched.current) return;
+      setRosterId(r.id);
+      setOurName(r.name || '');
+      setOurText((r.players || []).map((p) => `${p.number} ${p.name || ''}`.trim()).join('\n'));
+      setStarters(new Set(r.starters || []));
+    }).catch(() => {});
+    return () => { dead = true; };
+  }, []);
 
   const ours = useMemo(() => parseRoster(ourText), [ourText]);
   const opps = useMemo(() => parseRoster(oppText), [oppText]);
@@ -38,6 +55,9 @@ export default function Setup() {
       players, starters: players.filter((p) => p.team === 'us' && startNums.includes(p.number)).map((p) => p.id),
       created_at: now, updated_at: now,
     };
+    outbox.push('rosters', {
+      id: rosterId || uid(), name: ourName.trim(), players: ours, starters: startNums, updated_at: now,
+    });
     localStorage.setItem(LAST, JSON.stringify({ ourName: ourName.trim(), ourText, starters: startNums }));
     writeCache(game.id, { game, events: [] });
     outbox.push('games', game);
@@ -60,8 +80,8 @@ export default function Setup() {
 
       <section className="card stack">
         <h2>Your roster</h2>
-        <p className="muted">One player per line: number, then name. Saved for next game.</p>
-        <textarea rows={8} value={ourText} onChange={(e) => setOurText(e.target.value)} placeholder={'23 Jake Smith\n5 Sam Lee\n11 Chris Park'} />
+        <p className="muted">One player per line: number, then name. {rosterId ? 'Loaded from your saved roster. Changes you make are saved when you start the game.' : 'Saved to your account when you start the game.'}</p>
+        <textarea rows={8} value={ourText} onChange={(e) => { touched.current = true; setOurText(e.target.value); }} placeholder={'23 Jake Smith\n5 Sam Lee\n11 Chris Park'} />
         {ours.length > 0 && (
           <>
             <h3>Starters <span className="muted">({startNums.length}/5)</span></h3>

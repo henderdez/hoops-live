@@ -10,6 +10,8 @@ export const supabase = hasSupabase
 
 const EVENT_COLS = ['id', 'game_id', 'ts', 'period', 'team', 'player_id', 'type', 'meta', 'deleted'];
 const GAME_COLS = ['id', 'code', 'our_name', 'opp_name', 'status', 'period', 'stream_url', 'players', 'starters', 'created_at', 'updated_at'];
+const ROSTER_COLS = ['id', 'name', 'players', 'starters', 'updated_at'];
+const COLS = { games: GAME_COLS, events: EVENT_COLS, rosters: ROSTER_COLS };
 const pick = (row, cols) => Object.fromEntries(cols.filter((c) => row[c] !== undefined).map((c) => [c, row[c]]));
 const check = ({ data, error }) => { if (error) throw error; return data; };
 
@@ -32,7 +34,7 @@ export const supabaseRemote = {
   },
 
   async upsert(table, row) {
-    const clean = pick(row, table === 'games' ? GAME_COLS : EVENT_COLS);
+    const clean = pick(row, COLS[table]);
     check(await supabase.from(table).upsert(clean));
   },
 
@@ -41,6 +43,9 @@ export const supabaseRemote = {
   },
   async getGame(id) {
     return check(await supabase.from('games').select('*').eq('id', id).maybeSingle());
+  },
+  async getRoster() {
+    return check(await supabase.from('rosters').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle());
   },
   async listGames() {
     return check(
